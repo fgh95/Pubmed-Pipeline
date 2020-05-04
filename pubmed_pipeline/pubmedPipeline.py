@@ -1,6 +1,6 @@
 from pyspark.sql.functions import col
 from pyspark.sql.functions import pandas_udf
-from pyspark.sql.types import StringType, IntegerType
+from pyspark.sql.types import StringType, IntegerType, DoubleType
 import pandas as pd
 import os
 import joblib
@@ -66,10 +66,11 @@ class PubmedPipeline:
         
         """
         dataframe = dataframe.select("pmid", "pmc", "title", "medline_ta", "pubdate", "authors", "affiliations",
-                                    "publication_types", "mesh_terms", "keywords", "chemical_list", "abstract", "country",
-                                    "other_id", "doi", "nlm_unique_id", )
+                                 "publication_types", "mesh_terms", "keywords", "chemical_list", "abstract", "country",
+                                 "other_id", "doi", "nlm_unique_id")
 
-        dataframe = dataframe.withColumnRenamed("authors", "author").withColumnRenamed("affiliations", "affiliation")
+
+        dataframe = dataframe.withColumnRenamed("affiliations", "affiliation")
         dataframe = dataframe.withColumn('pmid', dataframe['pmid'].cast(IntegerType()))
         return dataframe
   
@@ -86,16 +87,39 @@ class PubmedPipeline:
             dataframe with udf predictions applied
         """
         classifier = self.classifier
-      
+
         @pandas_udf(returnType=StringType())
         def predict_pandas_udf(*features):
             X = pd.concat(features, axis=1)
             X.columns = ['abstract', 'title', 'medline_ta', 'keywords', 'publication_types', 'chemical_list', 'country',
-                         'author', 'mesh_terms']
+                         'authors', 'mesh_terms']
             y = classifier.predict(X)
             return pd.Series(y)
         
         return predict_pandas_udf(*args)
+
+    def getposterior_udf(self, *args):
+        """
+        Apply udf propagate to predict_pandas_udf
+
+        Args:
+            *args: columns used for pandas udf prediction
+
+        Return:
+            dataframe with udf predictions applied
+        """
+        classifier = self.classifier
+
+        @pandas_udf(returnType=DoubleType())
+        def predict_prob_pandas_udf(*features):
+            X = pd.concat(features, axis=1)
+            X.columns = ['abstract', 'title', 'medline_ta', 'keywords', 'publication_types', 'chemical_list', 'country',
+                         'authors', 'mesh_terms']
+            y = classifier.predict_proba(X)
+            y = y[:, 1]
+            return pd.Series(y)
+
+        return predict_prob_pandas_udf(*args)
     
     
     def applyClassifier(self, dataframe):
@@ -111,11 +135,16 @@ class PubmedPipeline:
         # TODO: include posterior probability as part of the output here
 
         dataframe = dataframe.withColumn( "prediction", self.propagate_udf(col("abstract"), col("title"), col("medline_ta"), col("keywords"), col("publication_types"),
-                            col("chemical_list"), col("country"), col("author"), col("mesh_terms")))
+                       col("chemical_list"), col("country"), col("authors"), col("mesh_terms")))
+
+        dataframe = dataframe.withColumn("prob", self.propagate_udf(col("abstract"), col("title"), col("medline_ta"), col("keywords"), col("publication_types"),
+                            col("chemical_list"), col("country"), col("authors"), col("mesh_terms")))
+
 
         dataframe = dataframe.filter(dataframe.prediction == "Relevant")    # remove non-relevant rows i.e. non-relevant papers
+
         return dataframe
-    
+
 
     def intersectPmidDataframes(self, currentDataframe, newAndUpdatedPapersDataframe):
         """
