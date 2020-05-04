@@ -108,6 +108,8 @@ class PubmedPipeline:
         Return:
             dataframe only containing entries classified as relevant
         """
+        # TODO: include posterior probability as part of the output here
+
         dataframe = dataframe.withColumn( "prediction", self.propagate_udf(col("abstract"), col("title"), col("medline_ta"), col("keywords"), col("publication_types"),
                             col("chemical_list"), col("country"), col("author"), col("mesh_terms")))
 
