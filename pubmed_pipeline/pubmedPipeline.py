@@ -137,7 +137,7 @@ class PubmedPipeline:
         dataframe = dataframe.withColumn( "prediction", self.propagate_udf(col("abstract"), col("title"), col("medline_ta"), col("keywords"), col("publication_types"),
                        col("chemical_list"), col("country"), col("authors"), col("mesh_terms")))
 
-        dataframe = dataframe.withColumn("prob", self.propagate_udf(col("abstract"), col("title"), col("medline_ta"), col("keywords"), col("publication_types"),
+        dataframe = dataframe.withColumn("prob", self.getposterior_udf(col("abstract"), col("title"), col("medline_ta"), col("keywords"), col("publication_types"),
                             col("chemical_list"), col("country"), col("authors"), col("mesh_terms")))
 
 
